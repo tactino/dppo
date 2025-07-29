@@ -18,10 +18,9 @@ import logging
 import math
 
 log = logging.getLogger(__name__)
-from model.diffusion.diffusion_vpg import VPGDiffusion
+from model.diffusion.flow_vpg import VPGFlow
 
-
-class PPODiffusion(VPGDiffusion):
+class PPOFlow(VPGFlow):
     def __init__(
         self,
         gamma_denoising: float,
@@ -32,7 +31,6 @@ class PPODiffusion(VPGDiffusion):
         clip_advantage_lower_quantile: float = 0,
         clip_advantage_upper_quantile: float = 1,
         norm_adv: bool = True,
-        grpo_group_size: int = 32,  ###【新增参数】：分组大小（GRPO用）
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -54,9 +52,7 @@ class PPODiffusion(VPGDiffusion):
         # Quantiles for clipping advantages
         self.clip_advantage_lower_quantile = clip_advantage_lower_quantile
         self.clip_advantage_upper_quantile = clip_advantage_upper_quantile
-
-        self.grpo_group_size = grpo_group_size  ###【新增变量赋值】
-
+        
     def loss(
         self,
         obs,
@@ -95,57 +91,22 @@ class PPODiffusion(VPGDiffusion):
         entropy_loss = -eta.mean()
         newlogprobs = newlogprobs.clamp(min=-5, max=2)
         oldlogprobs = oldlogprobs.clamp(min=-5, max=2)
-
+        
         # only backpropagate through the earlier steps (e.g., ones actually executed in the environment)
         newlogprobs = newlogprobs[:, :reward_horizon, :]
         oldlogprobs = oldlogprobs[:, :reward_horizon, :]
-
+        
         # Get the logprobs - batch over B and denoising steps
         newlogprobs = newlogprobs.mean(dim=(-1, -2)).view(-1)
         oldlogprobs = oldlogprobs.mean(dim=(-1, -2)).view(-1)
-
+        
         bc_loss = 0
         if use_bc_loss:
-            # See Eqn. 2 of https://arxiv.org/pdf/2403.03949.pdf
-            # Give a reward for maximizing probability of teacher policy's action with current policy.
-            # Actions are chosen along trajectory induced by current policy.
-
-            # Get counterfactual teacher actions
-            samples = self.forward(
-                cond=obs,
-                deterministic=False,
-                return_chain=True,
-                use_base_policy=True,
-            )
-            # Get logprobs of teacher actions under this policy
-            bc_logprobs = self.get_logprobs(
-                obs,
-                samples.chains,
-                get_ent=False,
-                use_base_policy=False,
-            )
-            bc_logprobs = bc_logprobs.clamp(min=-5, max=2)
-            bc_logprobs = bc_logprobs.mean(dim=(-1, -2)).view(-1)
-            bc_loss = -bc_logprobs.mean()
-
-        # normalize advantages
-
-        """
+            raise NotImplementedError("BC loss not implemented yet")
+        
         if self.norm_adv:
             advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
-        """
-
-        ### 使用 GRPO 相对优势替换原始标准化逻辑
-        if self.norm_adv:
-            group_size = self.grpo_group_size
-            B = advantages.shape[0]
-            if B % group_size != 0:
-                raise ValueError("Batch size must be divisible by grpo_group_size")
-            num_groups = B // group_size
-            advantages = advantages.view(num_groups, group_size)
-            advantages = advantages - advantages.mean(dim=1, keepdim=True)
-            advantages = advantages.view(-1)
-
+        
         # Clip advantages by 5th and 95th percentile
         advantage_min = torch.quantile(advantages, self.clip_advantage_lower_quantile)
         advantage_max = torch.quantile(advantages, self.clip_advantage_upper_quantile)
@@ -159,11 +120,11 @@ class PPODiffusion(VPGDiffusion):
             ]
         ).to(self.device)
         advantages *= discount
-
+        
         # get ratio
         logratio = newlogprobs - oldlogprobs
         ratio = logratio.exp()
-
+        
         # exponentially interpolate between the base and the current clipping value over denoising steps and repeat
         t = (denoising_inds.float() / (self.ft_denoising_steps - 1)).to(self.device)
         if self.ft_denoising_steps > 1:
@@ -174,7 +135,7 @@ class PPODiffusion(VPGDiffusion):
             )
         else:
             clip_ploss_coef = t
-
+            
         # get kl difference and whether value clipped
         with torch.no_grad():
             # old_approx_kl: the approximate Kullback–Leibler divergence, measured by (-logratio).mean(), which corresponds to the k1 estimator in John Schulman’s blog post on approximating KL http://joschu.net/blog/kl-approx.html
@@ -189,7 +150,7 @@ class PPODiffusion(VPGDiffusion):
             ratio, 1 - clip_ploss_coef, 1 + clip_ploss_coef
         )
         pg_loss = torch.max(pg_loss1, pg_loss2).mean()
-
+        
         # Value loss optionally with clipping
         newvalues = self.critic(obs).view(-1)
         if self.clip_vloss_coef is not None:

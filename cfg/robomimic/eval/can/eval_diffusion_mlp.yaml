@@ -23,14 +23,14 @@ act_steps: 4
 ft_denoising_steps: 0
 
 n_steps: 300  # each episode takes max_episode_steps / act_steps steps
-render_num: 0
+render_num: 5
 
 env:
   n_envs: 50
   name: ${env_name}
   best_reward_threshold_for_success: 1
   max_episode_steps: 300
-  save_video: False
+  save_video: True
   wrappers:
     robomimic_lowdim:
       normalization_path: ${normalization_path}
@@ -43,9 +43,12 @@ env:
       n_action_steps: ${act_steps}
       max_episode_steps: ${env.max_episode_steps}
       reset_within_step: True
+  render:
+    freq: 1
+    num: 5
 
 model:
-  _target_: model.diffusion.diffusion_eval_ft.DiffusionEval
+  _target_: model.diffusion.diffusion_eval.DiffusionEval
   ft_denoising_steps: ${ft_denoising_steps}
   predict_epsilon: True
   denoised_clip_value: 1.0
