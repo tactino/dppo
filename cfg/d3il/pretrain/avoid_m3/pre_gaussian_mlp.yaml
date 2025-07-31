@@ -18,8 +18,8 @@ action_dim: 2
 horizon_steps: 4
 cond_steps: 1
 
-wandb:
-  entity: ${oc.env:DPPO_WANDB_ENTITY}
+swanlab:
+  entity: ${oc.env:DPPO_SWANLAB_ENTITY}
   project: d3il-${env}-pretrain
   run: ${now:%H-%M-%S}_${name}
 

@@ -20,8 +20,8 @@ denoising_steps: 100
 horizon_steps: 16
 cond_steps: 1
 
-wandb:
-  entity: ${oc.env:DPPO_WANDB_ENTITY}
+swanlab:
+  entity: ${oc.env:DPPO_SWANLAB_ENTITY}
   project: furniture-${task}-${randomness}-pretrain
   run: ${now:%H-%M-%S}_${name}
 

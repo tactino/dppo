@@ -38,8 +38,8 @@ env:
       pass_full_observations: ${env.save_full_observations}
       reset_within_step: False
 
-wandb:
-  entity: ${oc.env:DPPO_WANDB_ENTITY}
+swanlab:
+  entity: ${oc.env:DPPO_SWANLAB_ENTITY}
   project: d3il-${env_name}-m2-finetune
   run: ${now:%H-%M-%S}_${name}
 

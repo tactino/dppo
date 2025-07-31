@@ -39,7 +39,7 @@ pip install -e .[all] # except for Kitchen
 
 4. [Install MuJoCo for Gym and/or Robomimic](installation/install_mujoco.md). [Install D3IL](installation/install_d3il.md). [Install IsaacGym and Furniture-Bench](installation/install_furniture.md)
 
-5. Set environment variables for data and logging directory (default is `data/` and `log/`), and set WandB entity (username or team name)
+5. Set environment variables for data and logging directory (default is `data/` and `log/`), and set SwanLab entity (username or team name)
 ```
 source script/set_path.sh
 ```
@@ -59,10 +59,10 @@ Pre-training data for all tasks are pre-processed and can be found at [here](htt
 <!-- The data path follows `${DPPO_DATA_DIR}/<benchmark>/<task>/train.npz`, e.g., `${DPPO_DATA_DIR}/gym/hopper-medium-v2/train.npz`. -->
 
 ### Run pre-training with data
-All the configs can be found under `cfg/<env>/pretrain/`. A new WandB project may be created based on `wandb.project` in the config file; set `wandb=null` in the command line to test without WandB logging.
-<!-- To run pre-training, first set your WandB entity (username or team name) and the parent directory for logging as environment variables. -->
+All the configs can be found under `cfg/<env>/pretrain/`. A new SwanLab project may be created based on `swanlab.project` in the config file; set `swanlab=null` in the command line to test without SwanLab logging.
+<!-- To run pre-training, first set your SwanLab entity (username or team name) and the parent directory for logging as environment variables. -->
 <!-- ```console
-export DPPO_WANDB_ENTITY=<your_wandb_entity>
+export DPPO_SWANLAB_ENTITY=<your_swanlab_entity>
 export DPPO_LOG_DIR=<your_prefered_logging_directory>
 ``` -->
 ```console
@@ -88,7 +88,7 @@ See [here](cfg/pretraining.md) for details of the experiments in the paper.
 
 <!-- If you did not set the environment variables for pre-training, we need to set them here for fine-tuning. 
 ```console
-export DPPO_WANDB_ENTITY=<your_wandb_entity>
+export DPPO_SWANLAB_ENTITY=<your_swanlab_entity>
 export DPPO_LOG_DIR=<your_prefered_logging_directory>
 ``` -->
 <!-- First create a directory as the parent directory of the downloaded checkpoints and set the environment variable for it.
@@ -105,7 +105,7 @@ Pre-trained policies used in the paper can be found [here](https://drive.google.
 
 ### Fine-tuning pre-trained policy
 
-All the configs can be found under `cfg/<env>/finetune/`. A new WandB project may be created based on `wandb.project` in the config file; set `wandb=null` in the command line to test without WandB logging.
+All the configs can be found under `cfg/<env>/finetune/`. A new SwanLab project may be created based on `swanlab.project` in the config file; set `swanlab=null` in the command line to test without SwanLab logging.
 <!-- Running them will download the default pre-trained policy. -->
 <!-- Running the script will download the default pre-trained policy checkpoint specified in the config (`base_policy_path`) automatically, as well as the normalization statistics, to `DPPO_LOG_DIR`.  -->
 ```console

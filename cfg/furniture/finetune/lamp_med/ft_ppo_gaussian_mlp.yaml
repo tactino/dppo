@@ -34,8 +34,8 @@ env:
     act_steps: ${act_steps}
     sparse_reward: True
 
-wandb:
-  entity: ${oc.env:DPPO_WANDB_ENTITY}
+swanlab:
+  entity: ${oc.env:DPPO_SWANLAB_ENTITY}
   project: furniture-${env.specific.furniture}-${env.specific.randomness}-finetune
   run: ${now:%H-%M-%S}_${name}
 

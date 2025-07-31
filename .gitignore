@@ -1,6 +1,6 @@
 # Custom
 result/
-wandb/
+swanlab/
 .vscode/
 data/
 log/

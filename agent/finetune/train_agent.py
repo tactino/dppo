@@ -9,7 +9,7 @@ from omegaconf import OmegaConf
 import torch
 import hydra
 import logging
-import wandb
+import swanlab
 import random
 
 log = logging.getLogger(__name__)
@@ -28,12 +28,12 @@ class TrainAgent:
         torch.manual_seed(self.seed)
 
         # Wandb
-        self.use_wandb = cfg.wandb is not None
-        if cfg.wandb is not None:
-            wandb.init(
-                entity=cfg.wandb.entity,
-                project=cfg.wandb.project,
-                name=cfg.wandb.run,
+        self.use_swanlab = cfg.swanlab is not None
+        if cfg.swanlab is not None:
+            swanlab.init(
+                entity=cfg.swanlab.entity,
+                project=cfg.swanlab.project,
+                name=cfg.swanlab.run,
                 config=OmegaConf.to_container(cfg, resolve=True),
             )
 

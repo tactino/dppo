@@ -58,8 +58,8 @@ shape_meta:
   action: 
     shape: [14]
 
-wandb:
-  entity: ${oc.env:DPPO_WANDB_ENTITY}
+swanlab:
+  entity: ${oc.env:DPPO_SWANLAB_ENTITY}
   project: robomimic-${env_name}-finetune
   run: ${now:%H-%M-%S}_${name}
 

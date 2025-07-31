@@ -20,7 +20,6 @@ import math
 log = logging.getLogger(__name__)
 from model.diffusion.diffusion_vpg import VPGDiffusion
 
-
 class PPODiffusion(VPGDiffusion):
     def __init__(
         self,
@@ -131,27 +130,15 @@ class PPODiffusion(VPGDiffusion):
         # normalize advantages
 
         """
+        beginning of GAE Advantage
+        """
         if self.norm_adv:
             advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
-        """
 
-        ### 使用 GRPO 相对优势替换原始标准化逻辑
-        if self.norm_adv:
-            group_size = self.grpo_group_size
-            B = advantages.shape[0]
-            if B % group_size != 0:
-                raise ValueError("Batch size must be divisible by grpo_group_size")
-            num_groups = B // group_size
-            advantages = advantages.view(num_groups, group_size)
-            advantages = advantages - advantages.mean(dim=1, keepdim=True)
-            advantages = advantages.view(-1)
-
-        # Clip advantages by 5th and 95th percentile
         advantage_min = torch.quantile(advantages, self.clip_advantage_lower_quantile)
         advantage_max = torch.quantile(advantages, self.clip_advantage_upper_quantile)
         advantages = advantages.clamp(min=advantage_min, max=advantage_max)
 
-        # denoising discount
         discount = torch.tensor(
             [
                 self.gamma_denoising ** (self.ft_denoising_steps - i - 1)
@@ -160,11 +147,9 @@ class PPODiffusion(VPGDiffusion):
         ).to(self.device)
         advantages *= discount
 
-        # get ratio
         logratio = newlogprobs - oldlogprobs
         ratio = logratio.exp()
 
-        # exponentially interpolate between the base and the current clipping value over denoising steps and repeat
         t = (denoising_inds.float() / (self.ft_denoising_steps - 1)).to(self.device)
         if self.ft_denoising_steps > 1:
             clip_ploss_coef = self.clip_ploss_coef_base + (
@@ -183,12 +168,95 @@ class PPODiffusion(VPGDiffusion):
             approx_kl = ((ratio - 1) - logratio).mean()
             clipfrac = ((ratio - 1.0).abs() > clip_ploss_coef).float().mean().item()
 
-        # Policy loss with clipping
         pg_loss1 = -advantages * ratio
         pg_loss2 = -advantages * torch.clamp(
             ratio, 1 - clip_ploss_coef, 1 + clip_ploss_coef
         )
         pg_loss = torch.max(pg_loss1, pg_loss2).mean()
+        """
+        end of GAE Advantage
+        """
+
+        """
+        beginning of GRPO Advantage
+        """
+        # if self.norm_adv:
+        #     group_size = self.grpo_group_size
+        #     B = advantages.shape[0] 
+
+        #     remainder = B % group_size
+        #     if remainder != 0:
+        #         advantages = advantages[:B - remainder] 
+
+        #     num_groups = advantages.shape[0] // group_size
+        #     advantages = advantages.view(num_groups, group_size)
+
+        #     advantages = advantages - advantages.mean(dim=1, keepdim=True)
+            
+        #     advantages = advantages.view(-1)
+
+        # # Clip advantages by 5th and 95th percentile
+        # advantage_min = torch.quantile(advantages, self.clip_advantage_lower_quantile)
+        # advantage_max = torch.quantile(advantages, self.clip_advantage_upper_quantile)
+        # advantages = advantages.clamp(min=advantage_min, max=advantage_max)
+
+        # # denoising discount
+        # discount = torch.tensor(
+        #     [
+        #         self.gamma_denoising ** (self.ft_denoising_steps - i - 1)
+        #         for i in denoising_inds
+        #     ]
+        # ).to(self.device)
+
+        # if advantages.size(0) < discount.size(0):
+        #     padding_size = discount.size(0) - advantages.size(0)
+        #     advantages = torch.cat([advantages, advantages[:padding_size]], dim=0)  # 补齐
+        # elif advantages.size(0) > discount.size(0):
+        #     advantages = advantages[:discount.size(0)]  # 裁剪
+
+        # advantages *= discount
+
+        # logratio = newlogprobs - oldlogprobs
+        # ratio = logratio.exp()
+
+        # if advantages.size(0) < ratio.size(0):
+        #     padding_size = ratio.size(0) - advantages.size(0)
+        #     advantages = torch.cat([advantages, advantages[:padding_size]], dim=0)  # 补齐
+        # elif advantages.size(0) > ratio.size(0):
+        #     advantages = advantages[:ratio.size(0)]  # 裁剪
+
+        # # exponentially interpolate between the base and the current clipping value over denoising steps and repeat
+        # t = (denoising_inds.float() / (self.ft_denoising_steps - 1)).to(self.device)
+        # if self.ft_denoising_steps > 1:
+        #     clip_ploss_coef = self.clip_ploss_coef_base + (
+        #         self.clip_ploss_coef - self.clip_ploss_coef_base
+        #     ) * (torch.exp(self.clip_ploss_coef_rate * t) - 1) / (
+        #         math.exp(self.clip_ploss_coef_rate) - 1
+        #     )
+        # else:
+        #     clip_ploss_coef = t
+
+        # # get kl difference and whether value clipped
+        # with torch.no_grad():
+        #     approx_kl = ((ratio - 1) - logratio).mean()
+        #     clipfrac = ((ratio - 1.0).abs() > clip_ploss_coef).float().mean().item()
+
+        # min_size = min(advantages.size(0), ratio.size(0))
+        # advantages = advantages[:min_size]
+        # ratio = ratio[:min_size]
+
+        # pg_loss1 = -advantages * ratio
+
+        # clamped_ratio = torch.clamp(ratio, 1 - clip_ploss_coef, 1 + clip_ploss_coef)
+
+        # clamped_ratio = clamped_ratio[:advantages.size(0)]
+
+        # pg_loss2 = -advantages * clamped_ratio
+
+        # pg_loss = torch.max(pg_loss1, pg_loss2).mean()
+        """
+        end of GRPO Advantage
+        """
 
         # Value loss optionally with clipping
         newvalues = self.critic(obs).view(-1)
