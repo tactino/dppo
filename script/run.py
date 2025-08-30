@@ -4,7 +4,6 @@ Launcher for all experiments. Download pre-training data, normalization statisti
 """
 
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "5"
 
 import sys
 import pretty_errors

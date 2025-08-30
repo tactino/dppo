@@ -3,7 +3,7 @@ defaults:
 hydra:
   run:
     dir: ${logdir}
-_target_: agent.finetune.train_ppo_diffusion_agent.TrainPPODiffusionAgent
+_target_: agent.finetune.train_grpo_diffusion_agent.TrainGRPODiffusionAgent
 
 name: ${env_name}_ft_diffusion_mlp_ta${horizon_steps}_td${denoising_steps}_tdf${ft_denoising_steps}
 logdir: ${oc.env:DPPO_LOG_DIR}/robomimic-finetune/${name}/${now:%Y-%m-%d}_${now:%H-%M-%S}_${seed}
@@ -48,7 +48,6 @@ swanlab:
 
 train:
   n_train_itr: 81
-  n_critic_warmup_itr: 2
   n_steps: 300
   gamma: 0.999
   actor_lr: 1e-4
@@ -57,28 +56,21 @@ train:
     first_cycle_steps: ${train.n_train_itr}
     warmup_steps: 10
     min_lr: 1e-4
-  critic_lr: 1e-3
-  critic_weight_decay: 0
-  critic_lr_scheduler:
-    first_cycle_steps: ${train.n_train_itr}
-    warmup_steps: 10
-    min_lr: 1e-3
   save_model_freq: 100
   val_freq: 10
   render:
     freq: 1
     num: 0
-  # PPO specific
+  grpo_group_size: 25
   reward_scale_running: True
   reward_scale_const: 1.0
-  gae_lambda: 0.95
   batch_size: 7500
   update_epochs: 10
-  vf_coef: 0.5
   target_kl: 1
 
 model:
-  _target_: model.diffusion.diffusion_ppo.PPODiffusion
+  _target_: model.diffusion.diffusion_grpo.GRPODiffusion
+  grpo_group_size: ${train.grpo_group_size}
   # HP to tune
   gamma_denoising: 0.99
   clip_ploss_coef: 0.01
@@ -97,12 +89,6 @@ model:
     cond_dim: ${eval:'${obs_dim} * ${cond_steps}'}
     horizon_steps: ${horizon_steps}
     action_dim: ${action_dim}
-  critic:
-    _target_: model.common.critic.CriticObs
-    mlp_dims: [256, 256, 256]
-    activation_type: Mish
-    residual_style: True
-    cond_dim: ${eval:'${obs_dim} * ${cond_steps}'}
   ft_denoising_steps: ${ft_denoising_steps}
   horizon_steps: ${horizon_steps}
   obs_dim: ${obs_dim}

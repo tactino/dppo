@@ -3,18 +3,18 @@ defaults:
 hydra:
   run:
     dir: ${logdir}
-_target_: agent.finetune.train_ppo_diffusion_agent.TrainPPODiffusionAgent
+_target_: agent.finetune.train_grpo_diffusion_agent.TrainGRPODiffusionAgent
 
 name: ${env_name}_ft_diffusion_mlp_ta${horizon_steps}_td${denoising_steps}_tdf${ft_denoising_steps}
 logdir: ${oc.env:DPPO_LOG_DIR}/robomimic-finetune/${name}/${now:%Y-%m-%d}_${now:%H-%M-%S}_${seed}
-base_policy_path: /home/gotham/dppo/log/robomimic-pretrain/lift_pre_diffusion_mlp_ta4_td20/2025-08-18_11-08-33_42/checkpoint/state_3000.pt
+base_policy_path: /home/gotham/dppo/log/robomimic-pretrain/square_pre_diffusion_mlp_ta4_td20/2025-08-18_11-09-06_42/checkpoint/state_3000.pt
 robomimic_env_cfg_path: cfg/robomimic/env_meta/${env_name}.json
 normalization_path: ${oc.env:DPPO_DATA_DIR}/robomimic/${env_name}/normalization.npz
 
 seed: 42
 device: cuda:0
-env_name: lift
-obs_dim: 19
+env_name: square
+obs_dim: 23
 action_dim: 7
 denoising_steps: 20
 ft_denoising_steps: 10
@@ -26,7 +26,7 @@ env:
   n_envs: 50
   name: ${env_name}
   best_reward_threshold_for_success: 1
-  max_episode_steps: 300
+  max_episode_steps: 400
   save_video: False
   wrappers:
     robomimic_lowdim:
@@ -47,38 +47,30 @@ swanlab:
   run: ${now:%H-%M-%S}_${name}
 
 train:
-  n_train_itr: 81
-  n_critic_warmup_itr: 2
-  n_steps: 300
+  n_train_itr: 201
+  n_steps: 400
   gamma: 0.999
   actor_lr: 1e-4
   actor_weight_decay: 0
   actor_lr_scheduler:
     first_cycle_steps: ${train.n_train_itr}
-    warmup_steps: 10
+    warmup_steps: 0
     min_lr: 1e-4
-  critic_lr: 1e-3
-  critic_weight_decay: 0
-  critic_lr_scheduler:
-    first_cycle_steps: ${train.n_train_itr}
-    warmup_steps: 10
-    min_lr: 1e-3
   save_model_freq: 100
   val_freq: 10
   render:
     freq: 1
     num: 0
-  # PPO specific
+  grpo_group_size: 25
   reward_scale_running: True
   reward_scale_const: 1.0
-  gae_lambda: 0.95
-  batch_size: 7500
+  batch_size: 10000
   update_epochs: 10
-  vf_coef: 0.5
   target_kl: 1
 
 model:
-  _target_: model.diffusion.diffusion_ppo.PPODiffusion
+  _target_: model.diffusion.diffusion_grpo.GRPODiffusion
+  grpo_group_size: ${train.grpo_group_size}
   # HP to tune
   gamma_denoising: 0.99
   clip_ploss_coef: 0.01
@@ -91,18 +83,13 @@ model:
   network_path: ${base_policy_path}
   actor:
     _target_: model.diffusion.mlp_diffusion.DiffusionMLP
-    time_dim: 16
-    mlp_dims: [512, 512, 512]
+    time_dim: 32
+    mlp_dims: [1024, 1024, 1024]
+    cond_mlp_dims: [512, 64]
     residual_style: True
     cond_dim: ${eval:'${obs_dim} * ${cond_steps}'}
     horizon_steps: ${horizon_steps}
     action_dim: ${action_dim}
-  critic:
-    _target_: model.common.critic.CriticObs
-    mlp_dims: [256, 256, 256]
-    activation_type: Mish
-    residual_style: True
-    cond_dim: ${eval:'${obs_dim} * ${cond_steps}'}
   ft_denoising_steps: ${ft_denoising_steps}
   horizon_steps: ${horizon_steps}
   obs_dim: ${obs_dim}

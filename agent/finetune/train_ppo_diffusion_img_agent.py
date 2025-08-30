@@ -14,7 +14,7 @@ import math
 
 log = logging.getLogger(__name__)
 from util.timer import Timer
-from agent.finetune.train_ppo_diffusion_agent import TrainPPODiffusionAgent
+from agent.finetune.train_grpo_diffusion_agent import TrainPPODiffusionAgent
 from model.common.modules import RandomShiftsAug
 
 

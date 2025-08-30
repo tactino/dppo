@@ -1,5 +1,5 @@
 """
-DPPO fine-tuning.
+DGRPO fine-tuning.
 
 """
 
@@ -14,11 +14,11 @@ import math
 
 log = logging.getLogger(__name__)
 from util.timer import Timer
-from agent.finetune.train_ppo_agent import TrainPPOAgent
+from agent.finetune.train_grpo_agent import TrainGRPOAgent
 from util.scheduler import CosineAnnealingWarmupRestarts
 
 
-class TrainPPODiffusionAgent(TrainPPOAgent):
+class TrainGRPODiffusionAgent(TrainGRPOAgent):
     def __init__(self, cfg):
         super().__init__(cfg)
 
@@ -212,12 +212,6 @@ class TrainPPODiffusionAgent(TrainPPOAgent):
                     
                     for i, obs_t in enumerate(obs_ts_k):
                         obs_ts[i]["state"] = obs_t
-                    values_trajs = np.empty((0, self.n_envs))
-                    for obs in obs_ts:
-                        values = self.model.critic(obs).cpu().numpy().flatten()
-                        values_trajs = np.vstack(
-                            (values_trajs, values.reshape(-1, self.n_envs))
-                        )
                     chains_t = einops.rearrange(
                         torch.from_numpy(chains_trajs).float().to(self.device),
                         "s e t h d -> (s e) t h d",
@@ -247,37 +241,18 @@ class TrainPPODiffusionAgent(TrainPPOAgent):
                         )
                         reward_trajs = reward_trajs_transpose.T
 
-                    # bootstrap value with GAE if not terminal - apply reward scaling with constant if specified
-                    obs_venv_ts = {
-                        "state": torch.from_numpy(obs_venv["state"])
-                        .float()
-                        .to(self.device)
-                    }
+                    # GRPO: use discounted reward as advantage
                     advantages_trajs = np.zeros_like(reward_trajs)
-                    lastgaelam = 0
+
+                    # accumulating rewards backwards from the last step
                     for t in reversed(range(self.n_steps)):
                         if t == self.n_steps - 1:
-                            nextvalues = (
-                                self.model.critic(obs_venv_ts)
-                                .reshape(1, -1)
-                                .cpu()
-                                .numpy()
-                            )
+                            advantages_trajs[t] = reward_trajs[t] * self.reward_scale_const
                         else:
-                            nextvalues = values_trajs[t + 1]
-                        nonterminal = 1.0 - terminated_trajs[t]
-                        # delta = r + gamma*V(st+1) - V(st)
-                        delta = (
-                            reward_trajs[t] * self.reward_scale_const
-                            + self.gamma * nextvalues * nonterminal
-                            - values_trajs[t]
-                        )
-                        # A = delta_t + gamma*lamdba*delta_{t+1} + ...
-                        advantages_trajs[t] = lastgaelam = (
-                            delta
-                            + self.gamma * self.gae_lambda * nonterminal * lastgaelam
-                        )
-                    returns_trajs = advantages_trajs + values_trajs
+                            advantages_trajs[t] = (
+                                reward_trajs[t] * self.reward_scale_const
+                                + self.gamma * advantages_trajs[t + 1]
+                            )
 
                 # k for environment step
                 obs_k = {
@@ -290,12 +265,6 @@ class TrainPPODiffusionAgent(TrainPPOAgent):
                     torch.tensor(chains_trajs, device=self.device).float(),
                     "s e t h d -> (s e) t h d",
                 )
-                returns_k = (
-                    torch.tensor(returns_trajs, device=self.device).float().reshape(-1)
-                )
-                values_k = (
-                    torch.tensor(values_trajs, device=self.device).float().reshape(-1)
-                )
                 advantages_k = (
                     torch.tensor(advantages_trajs, device=self.device)
                     .float()
@@ -303,9 +272,8 @@ class TrainPPODiffusionAgent(TrainPPOAgent):
                 )
                 logprobs_k = torch.tensor(logprobs_trajs, device=self.device).float()
 
-                # Update policy and critic
+                # Update policy
                 total_steps = self.n_steps * self.n_envs * self.model.ft_denoising_steps
-                clipfracs = []
                 for update_epoch in range(self.update_epochs):
                     # for each epoch, go through all data in batches
                     flag_break = False
@@ -322,8 +290,6 @@ class TrainPPODiffusionAgent(TrainPPOAgent):
                         obs_b = {"state": obs_k["state"][batch_inds_b]}
                         chains_prev_b = chains_k[batch_inds_b, denoising_inds_b]
                         chains_next_b = chains_k[batch_inds_b, denoising_inds_b + 1]
-                        returns_b = returns_k[batch_inds_b]
-                        values_b = values_k[batch_inds_b]
                         advantages_b = advantages_k[batch_inds_b]
                         logprobs_b = logprobs_k[batch_inds_b, denoising_inds_b]
 
@@ -331,9 +297,6 @@ class TrainPPODiffusionAgent(TrainPPOAgent):
                         (
                             pg_loss,
                             entropy_loss,
-                            v_loss,
-                            clipfrac,
-                            approx_kl,
                             ratio,
                             bc_loss,
                             eta,
@@ -342,8 +305,6 @@ class TrainPPODiffusionAgent(TrainPPOAgent):
                             chains_prev_b,
                             chains_next_b,
                             denoising_inds_b,
-                            returns_b,
-                            values_b,
                             advantages_b,
                             logprobs_b,
                             use_bc_loss=self.use_bc_loss,
@@ -352,43 +313,26 @@ class TrainPPODiffusionAgent(TrainPPOAgent):
                         loss = (
                             pg_loss
                             + entropy_loss * self.ent_coef
-                            + v_loss * self.vf_coef
                             + bc_loss * self.bc_loss_coeff
                         )
-                        clipfracs += [clipfrac]
 
-                        # update policy and critic
+                        # update policy
                         self.actor_optimizer.zero_grad()
-                        self.critic_optimizer.zero_grad()
                         if self.learn_eta:
                             self.eta_optimizer.zero_grad()
                         loss.backward()
-                        if self.itr >= self.n_critic_warmup_itr:
-                            if self.max_grad_norm is not None:
-                                torch.nn.utils.clip_grad_norm_(
-                                    self.model.actor_ft.parameters(), self.max_grad_norm
-                                )
-                            self.actor_optimizer.step()
-                            if self.learn_eta and batch % self.eta_update_interval == 0:
-                                self.eta_optimizer.step()
-                        self.critic_optimizer.step()
+                        if self.max_grad_norm is not None:
+                            torch.nn.utils.clip_grad_norm_(
+                                self.model.actor_ft.parameters(), self.max_grad_norm
+                            )
+                        self.actor_optimizer.step()
+                        if self.learn_eta and batch % self.eta_update_interval == 0:
+                            self.eta_optimizer.step()
                         log.info(
-                            f"approx_kl: {approx_kl}, update_epoch: {update_epoch}, num_batch: {num_batch}"
+                            f"update_epoch: {update_epoch}, num_batch: {num_batch}"
                         )
-
-                        # Stop gradient update if KL difference reaches target
-                        if self.target_kl is not None and approx_kl > self.target_kl:
-                            flag_break = True
-                            break
                     if flag_break:
                         break
-
-                # Explained variation of future rewards using value function
-                y_pred, y_true = values_k.cpu().numpy(), returns_k.cpu().numpy()
-                var_y = np.var(y_true)
-                explained_var = (
-                    np.nan if var_y == 0 else 1 - np.var(y_true - y_pred) / var_y
-                )
 
             # Plot state trajectories (only in D3IL)
             if (
@@ -405,11 +349,9 @@ class TrainPPODiffusionAgent(TrainPPOAgent):
                 )
 
             # Update lr, min_sampling_std
-            if self.itr >= self.n_critic_warmup_itr:
-                self.actor_lr_scheduler.step()
-                if self.learn_eta:
-                    self.eta_lr_scheduler.step()
-            self.critic_lr_scheduler.step()
+            self.actor_lr_scheduler.step()
+            if self.learn_eta:
+                self.eta_lr_scheduler.step()
             self.model.step()
             diffusion_min_sampling_std = self.model.get_min_sampling_denoising_std()
 
@@ -429,6 +371,7 @@ class TrainPPODiffusionAgent(TrainPPOAgent):
                 run_results[-1]["obs_trajs"] = obs_trajs
                 run_results[-1]["chains_trajs"] = chains_trajs
                 run_results[-1]["reward_trajs"] = reward_trajs
+
             if self.itr % self.log_freq == 0:
                 time = timer()
                 run_results[-1]["time"] = time
@@ -451,7 +394,7 @@ class TrainPPODiffusionAgent(TrainPPOAgent):
                     run_results[-1]["eval_best_reward"] = avg_best_reward
                 else:
                     log.info(
-                        f"{self.itr}: step {cnt_train_step:8d} | loss {loss:8.4f} | pg loss {pg_loss:8.4f} | value loss {v_loss:8.4f} | bc loss {bc_loss:8.4f} | reward {avg_episode_reward:8.4f} | eta {eta:8.4f} | t:{time:8.4f}"
+                        f"{self.itr}: step {cnt_train_step:8d} | loss {loss:8.4f} | pg loss {pg_loss:8.4f} | bc loss {bc_loss:8.4f} | reward {avg_episode_reward:8.4f} | eta {eta:8.4f} | t:{time:8.4f}"
                     )
                     if self.use_swanlab:
                         swanlab.log(
@@ -459,24 +402,19 @@ class TrainPPODiffusionAgent(TrainPPOAgent):
                                 "total env step": cnt_train_step,
                                 "loss": loss,
                                 "pg loss": pg_loss,
-                                "value loss": v_loss,
                                 "bc loss": bc_loss,
                                 "eta": eta,
-                                "approx kl": approx_kl,
                                 "ratio": ratio,
-                                "clipfrac": np.mean(clipfracs),
-                                "explained variance": explained_var,
                                 "avg episode reward - train": avg_episode_reward,
                                 "num episode - train": num_episode_finished,
                                 "diffusion - min sampling std": diffusion_min_sampling_std,
                                 "actor lr": self.actor_optimizer.param_groups[0]["lr"],
-                                "critic lr": self.critic_optimizer.param_groups[0][
-                                    "lr"
-                                ],
                             },
                             step=self.itr,
                         )
                     run_results[-1]["train_episode_reward"] = avg_episode_reward
+
                 with open(self.result_path, "wb") as f:
                     pickle.dump(run_results, f)
+
             self.itr += 1

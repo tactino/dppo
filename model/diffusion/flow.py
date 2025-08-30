@@ -87,7 +87,8 @@ class FlowModel(nn.Module):
         B = len(sample_data)
         
         x = torch.randn((B, self.horizon_steps, self.action_dim), device=device)
-        
+
+        # Core Logic for flow
         dt = 1 / self.denoising_steps
         t_all = [dt * i for i in range(self.denoising_steps)]
         for i, t in enumerate(t_all):

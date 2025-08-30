@@ -1,5 +1,5 @@
 """
-Parent PPO fine-tuning agent class.
+Parent GRPO fine-tuning agent class.
 
 """
 
@@ -13,7 +13,7 @@ from agent.finetune.train_agent import TrainAgent
 from util.reward_scaling import RunningRewardScaler
 
 
-class TrainPPOAgent(TrainAgent):
+class TrainGRPOAgent(TrainAgent):
 
     def __init__(self, cfg):
         super().__init__(cfg)
@@ -26,10 +26,6 @@ class TrainPPOAgent(TrainAgent):
 
         # note the discount factor gamma here is applied to reward every act_steps, instead of every env step
         self.gamma = cfg.train.gamma
-
-        # Only for PPO
-        # Wwarm up period for critic before actor updates
-        self.n_critic_warmup_itr = cfg.train.n_critic_warmup_itr
 
         # Optimizer
         self.actor_optimizer = torch.optim.AdamW(
@@ -48,30 +44,14 @@ class TrainPPOAgent(TrainAgent):
             gamma=1.0,
         )
 
-        self.critic_optimizer = torch.optim.AdamW(
-            self.model.critic.parameters(),
-            lr=cfg.train.critic_lr,
-            weight_decay=cfg.train.critic_weight_decay,
-        )
-        self.critic_lr_scheduler = CosineAnnealingWarmupRestarts(
-            self.critic_optimizer,
-            first_cycle_steps=cfg.train.critic_lr_scheduler.first_cycle_steps,
-            cycle_mult=1.0,
-            max_lr=cfg.train.critic_lr,
-            min_lr=cfg.train.critic_lr_scheduler.min_lr,
-            warmup_steps=cfg.train.critic_lr_scheduler.warmup_steps,
-            gamma=1.0,
-        )
-        # Generalized advantage estimation
-        self.gae_lambda: float = cfg.train.get("gae_lambda", 0.95)
+        # Group size for GRPO
+        self.grpo_group_size: int = cfg.train.grpo_group_size
         # If specified, stop gradient update once KL difference reaches it
         self.target_kl: Optional[float] = cfg.train.target_kl
         # Number of times the collected data is used in gradient update
         self.update_epochs: int = cfg.train.update_epochs
         # Entropy loss coefficient
         self.ent_coef: float = cfg.train.get("ent_coef", 0)
-        # Value loss coefficient
-        self.vf_coef: float = cfg.train.get("vf_coef", 0)
         # Whether to use running reward scaling
         self.reward_scale_running: bool = cfg.train.reward_scale_running
         if self.reward_scale_running:
