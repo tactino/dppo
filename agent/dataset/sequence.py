@@ -173,14 +173,27 @@ class StitchedSequenceQLearningDataset(StitchedSequenceDataset):
         # discount factor
         self.discount_factor = discount_factor
 
-        # rewards and dones(terminals)
-        self.rewards = (
-            torch.from_numpy(dataset["rewards"][:total_num_steps]).float().to(device)
-        )
+        # rewards
+        if "rewards" in dataset:
+            self.rewards = torch.from_numpy(dataset["rewards"][:total_num_steps]).float().to(device)
+        else:
+            log.warning("Dataset has no rewards! Creating binary rewards (0/1).")
+            # The last step of episode reward=1，else=0
+            self.rewards = torch.zeros(total_num_steps, dtype=torch.float32, device=device)
+            traj_end_indices = np.cumsum(traj_lengths) - 1
+            self.rewards[traj_end_indices] = 1.0
+
         log.info(f"Rewards shape/type: {self.rewards.shape, self.rewards.dtype}")
-        self.dones = (
-            torch.from_numpy(dataset["terminals"][:total_num_steps]).to(device).float()
-        )
+
+        # dones
+        if "terminals" in dataset:
+            self.dones = torch.from_numpy(dataset["terminals"][:total_num_steps]).to(device).float()
+        else:
+            log.warning("Dataset has no terminals! Creating synthetic dones.")
+            # The last step of episode done=1，else=0
+            self.dones = torch.zeros(total_num_steps, dtype=torch.float32, device=device)
+            self.dones[traj_end_indices] = 1.0
+
         log.info(f"Dones shape/type: {self.dones.shape, self.dones.dtype}")
 
         super().__init__(

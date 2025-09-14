@@ -71,14 +71,14 @@ class TrainDiffusionAgent(PreTrainAgent):
                 if self.use_swanlab:
                     if loss_val is not None:
                         swanlab.log(
-                            {"loss - val": loss_val}, step=self.epoch, 
+                            {"loss - val": loss_val}, step=self.epoch, commit=False
                         )
                     swanlab.log(
                         {
                             "loss - train": loss_train,
                         },
                         step=self.epoch,
-                        
+                        commit=True,
                     )
 
             # count

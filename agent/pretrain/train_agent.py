@@ -60,6 +60,8 @@ class PreTrainAgent:
 
     def __init__(self, cfg):
         super().__init__()
+        self.cfg = cfg
+        self.device = cfg.device
         self.seed = cfg.get("seed", 42)
         random.seed(self.seed)
         np.random.seed(self.seed)
@@ -76,9 +78,18 @@ class PreTrainAgent:
             )
 
         # Build model
-        self.model = hydra.utils.instantiate(cfg.model)
-        self.ema = EMA(cfg.ema)
-        self.ema_model = deepcopy(self.model)
+        if "model" in cfg:
+            self.model = hydra.utils.instantiate(cfg.model)
+            self.ema = EMA(cfg.ema)
+            self.ema_model = deepcopy(self.model)
+        elif "q_network" in cfg:
+            self.q_network = hydra.utils.instantiate(cfg.q_network).to(self.device)
+            self.model = self.q_network
+        elif "v_network" in cfg:
+            self.v_network = hydra.utils.instantiate(cfg.v_network).to(self.device)
+            self.model = self.v_network
+        else:
+            raise ValueError("Config must define either model, q_network, or v_network")
 
         # Training params
         self.n_epochs = cfg.train.n_epochs

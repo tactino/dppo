@@ -34,6 +34,8 @@ class DiffusionModel(nn.Module):
         horizon_steps,
         obs_dim,
         action_dim,
+        q_network=None,
+        v_network=None,
         network_path=None,
         device="cuda:0",
         # Various clipping
