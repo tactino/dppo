@@ -1,3 +1,18 @@
+> ### About this repository
+>
+> This is a **modified copy of [irom-princeton/dppo](https://github.com/irom-princeton/dppo)**,
+> the official code for *Diffusion Policy Policy Optimization* (Ren et al.).
+> All credit for the original framework belongs to its authors; the upstream README is kept
+> below unchanged, and the original MIT license applies.
+>
+> **My changes:** replacing the PPO advantage estimator with a **GRPO-form (group-relative)
+> advantage**, and extending that variant to all robomimic tasks.
+> See the commits by `2313732512@users` for the full diff against upstream.
+>
+> This fork exists for my own experiments and is not a maintained release.
+
+---
+
 # Diffusion Policy Policy Optimization (DPPO)
 
 [[Paper](https://arxiv.org/abs/2409.00588)]&nbsp;&nbsp;[[Website](https://diffusion-ppo.github.io/)]
